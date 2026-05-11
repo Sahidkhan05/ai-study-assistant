@@ -1,35 +1,50 @@
 import { supabase } from "@/lib/supabase";
 
-export async function GET() {
-    try {
-        const { data , error}  = await supabase
-        .from("chats")
-        .select("*")
-        .order("created_at",
-            { ascending: true }
-        )
+export async function GET(req) {
+  try {
+    const { searchParams } = new URL(req.url);
 
-        if(error) 
+    const chatId = searchParams.get("chatId");
+
+    if (!chatId) {
+      return Response.json(
         {
-            return Response.json(
-                {
-                    error: error.message,
-                },
-                {
-                    status: 500,
-                }
-
-            );
+          error: "Missing chatId",
+        },
+        {
+          status: 400,
         }
-        return Response.json(data);
-    } catch {
-        return Response.json(
-            {
-                error: "An unexpected error occurred.",
-            },
-            {
-                status: 500,
-            }
-        );
+      );
     }
-} 
+
+    const { data, error } = await supabase
+      .from("chats")
+      .select("*")
+      .eq("chat_id", chatId)
+      .order("created_at", {
+        ascending: true,
+      });
+
+    if (error) {
+      return Response.json(
+        {
+          error: error.message,
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    return Response.json(data);
+  } catch {
+    return Response.json(
+      {
+        error: "An unexpected error occurred.",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+}

@@ -119,6 +119,8 @@ export default function ChatPage() {
     setIsLoading(true);
 
     try {
+      console.log("📤 Sending message to /api/chat:", userText.slice(0, 50) + "...");
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -131,14 +133,27 @@ export default function ChatPage() {
         }),
       });
 
+      console.log("📥 API response status:", response.status);
+
       if (!response.ok) {
-        throw new Error("Failed to send message");
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.reply || `Error: HTTP ${response.status}`;
+        console.error("❌ API error:", errorMessage);
+        
+        setIsLoading(false);
+        addMessage({
+          id: `error-${Date.now()}`,
+          sender: "ai",
+          text: errorMessage,
+        });
+        return;
       }
 
       const data = await response.json();
       const aiText = data.reply || "Sorry, I could not create a response.";
       const aiMessageId = `ai-${Date.now()}`;
 
+      console.log("✅ AI response received:", aiText.slice(0, 50) + "...");
       setIsLoading(false);
 
       addMessage({
@@ -148,13 +163,14 @@ export default function ChatPage() {
       });
 
       await streamAiReply(aiText, aiMessageId);
-    } catch {
+    } catch (error) {
+      console.error("❌ Network or parsing error:", error);
       setIsLoading(false);
 
       addMessage({
         id: `error-${Date.now()}`,
         sender: "ai",
-        text: "Something went wrong. Please try again.",
+        text: "Network error. Please check your connection and try again.",
       });
     }
   };
@@ -165,6 +181,33 @@ export default function ChatPage() {
     }
   };
 
+  
+
+useEffect(() => {
+  const fetchChats = async () => {
+    try {
+      const response = await fetch("/api/chats");
+
+      const data = await response.json();
+
+      if (Array.isArray(data) && data.length > 0) {
+        const formattedChats = data.map((chat) => ({
+          chat_id: chat.chat_id,
+          chat_title: chat.chat_title,
+          messages: [starterMessage],
+        }));
+
+        setConversations(formattedChats);
+        setActiveChatId(formattedChats[0].chat_id);
+      }
+    } catch (error) {
+      console.error("Failed to fetch chats:", error);
+    }
+  };
+
+  fetchChats();
+}, []);
+
   return (
     <main className="min-h-screen bg-slate-100 px-3 py-4 text-slate-950 sm:px-5 lg:px-8">
       <section className="mx-auto flex h-[calc(100vh-6rem)] min-h-[640px] w-full max-w-7xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl lg:flex-row">
@@ -172,7 +215,46 @@ export default function ChatPage() {
           conversations={conversations}
           activeChatId={activeChatId}
           onNewChat={handleNewChat}
-          onSelectChat={setActiveChatId}
+          onSelectChat={async (chatId) => {
+  setActiveChatId(chatId);
+
+  try {
+    const response = await fetch(
+      `/api/messages?chatId=${chatId}`
+    );
+
+    const data = await response.json();
+
+    const formattedMessages = [];
+
+    data.forEach((item) => {
+      formattedMessages.push({
+        id: `user-${item.id}`,
+        sender: "user",
+        text: item.user_message,
+      });
+
+      formattedMessages.push({
+        id: `ai-${item.id}`,
+        sender: "ai",
+        text: item.ai_reply,
+      });
+    });
+
+    setConversations((previousConversations) =>
+      previousConversations.map((chat) =>
+        chat.chat_id === chatId
+          ? {
+              ...chat,
+              messages: formattedMessages,
+            }
+          : chat
+      )
+    );
+  } catch (error) {
+    console.error("Failed to load messages:", error);
+  }
+}}
         />
 
         <div className="flex min-w-0 flex-1 flex-col bg-white">
