@@ -129,7 +129,11 @@ export default function ChatPage() {
         body: JSON.stringify({
           message: userText,
           chatId: activeChat.chat_id,
-          chatTitle: activeChat.chat_title,
+          chatTitle:
+    activeChat.messages.length <= 1
+      ? userText
+      : activeChat.chat_title,
+
         }),
       });
 
