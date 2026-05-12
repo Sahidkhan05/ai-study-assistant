@@ -17,8 +17,9 @@ export async function GET(req) {
       );
     }
 
+    // Fetch from messages table (not chats table)
     const { data, error } = await supabase
-      .from("chats")
+      .from("messages")
       .select("*")
       .eq("chat_id", chatId)
       .order("created_at", {
@@ -36,7 +37,9 @@ export async function GET(req) {
       );
     }
 
-    return Response.json(data);
+    return Response.json({
+  data,
+});
   } catch {
     return Response.json(
       {

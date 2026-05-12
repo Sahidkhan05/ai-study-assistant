@@ -151,19 +151,48 @@ Rules:
     // 9. Save to Supabase (non-blocking)
     if (isSupabaseConfigured) {
       try {
-        const { error: supabaseError } = await supabase.from("chats").insert([
+        // Step 1: Check if chat exists in chats table
+        const { data: existingChats, error: checkError } = await supabase
+          .from("chats")
+          .select("id")
+          .eq("chat_id", chatId)
+          .limit(1);
+
+        if (checkError) {
+          console.warn("⚠️ Error checking if chat exists:", checkError.message);
+        } else if (!existingChats || existingChats.length === 0) {
+          // Step 2: If chat doesn't exist, create ONE entry in chats table
+          console.log(`📝 Creating new chat: ${chatId}`);
+          const { error: chatCreateError } = await supabase.from("chats").insert([
+            {
+              chat_id: chatId,
+              chat_title: chatTitle,
+            },
+          ]);
+
+          if (chatCreateError) {
+            console.warn("⚠️ Failed to create chat:", chatCreateError.message);
+          } else {
+            console.log("✅ New chat created in database");
+          }
+        } else {
+          console.log(`✅ Chat ${chatId} already exists, skipping creation`);
+        }
+
+        // Step 3: Save messages to messages table (not chats table)
+        console.log(`💬 Saving messages to messages table for chat ${chatId}`);
+        const { error: messagesError } = await supabase.from("messages").insert([
           {
+            chat_id: chatId,
             user_message: userMessage,
             ai_reply: aiReply,
-            chat_id: chatId,
-            chat_title: chatTitle,
           },
         ]);
 
-        if (supabaseError) {
-          console.warn("⚠️ Supabase save error:", supabaseError.message);
+        if (messagesError) {
+          console.warn("⚠️ Failed to save messages:", messagesError.message);
         } else {
-          console.log("✅ Chat saved to Supabase");
+          console.log("✅ Messages saved to database");
         }
       } catch (supabaseError) {
         console.warn("⚠️ Supabase error (non-blocking):", supabaseError.message);

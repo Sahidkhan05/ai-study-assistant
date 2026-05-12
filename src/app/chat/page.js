@@ -25,15 +25,16 @@ function wait(ms) {
 
 export default function ChatPage() {
   const [message, setMessage] = useState("");
-  const [conversations, setConversations] = useState([firstChat]);
-  const [activeChatId, setActiveChatId] = useState(firstChat.chat_id);
+  const [conversations, setConversations] = useState([]);
+  const [activeChatId, setActiveChatId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const chatEndRef = useRef(null);
 
   const activeChat =
     conversations.find((chat) => chat.chat_id === activeChatId) ||
-    conversations[0];
+    conversations[0] ||
+    { chat_id: null, chat_title: "Chat", messages: [] };
   const messages = activeChat?.messages || emptyMessages;
   const isBusy = isLoading || isStreaming;
 
@@ -195,15 +196,51 @@ useEffect(() => {
       const data = await response.json();
 
       if (Array.isArray(data) && data.length > 0) {
-        const formattedChats = data.map((chat) => ({
-          chat_id: chat.chat_id,
-          chat_title: chat.chat_title,
-          messages: [starterMessage],
-        }));
+  const formattedChats = data.map((chat) => ({
+    chat_id: chat.chat_id,
+    chat_title: chat.chat_title,
+    messages: [],
+  }));
 
-        setConversations(formattedChats);
-        setActiveChatId(formattedChats[0].chat_id);
-      }
+  const firstChatId = formattedChats[0].chat_id;
+
+  setConversations(formattedChats);
+  setActiveChatId(firstChatId);
+
+  // Fetch first chat messages automatically
+  const messagesResponse = await fetch(
+    `/api/messages?chatId=${firstChatId}`
+  );
+
+  const messagesData = await messagesResponse.json();
+
+  const formattedMessages = [];
+
+  (messagesData?.data || []).forEach((item) => {
+    formattedMessages.push({
+      id: `user-${item.id}`,
+      sender: "user",
+      text: item.user_message,
+    });
+
+    formattedMessages.push({
+      id: `ai-${item.id}`,
+      sender: "ai",
+      text: item.ai_reply,
+    });
+  });
+
+  setConversations((previousConversations) =>
+    previousConversations.map((chat) =>
+      chat.chat_id === firstChatId
+        ? {
+            ...chat,
+            messages: formattedMessages,
+          }
+        : chat
+    )
+  );
+}
     } catch (error) {
       console.error("Failed to fetch chats:", error);
     }
@@ -220,43 +257,103 @@ useEffect(() => {
           activeChatId={activeChatId}
           onNewChat={handleNewChat}
           onSelectChat={async (chatId) => {
-  setActiveChatId(chatId);
+            setActiveChatId(chatId);
 
-  try {
-    const response = await fetch(
-      `/api/messages?chatId=${chatId}`
-    );
+            try {
+              const response = await fetch(
+                `/api/messages?chatId=${chatId}`
+              );
 
-    const data = await response.json();
+              const data = await response.json();
 
-    const formattedMessages = [];
+              const formattedMessages = [];
 
-    data.forEach((item) => {
-      formattedMessages.push({
-        id: `user-${item.id}`,
-        sender: "user",
-        text: item.user_message,
-      });
+              (data?.data || []).forEach((item)  => {
+                formattedMessages.push({
+                  id: `user-${item.id}`,
+                  sender: "user",
+                  text: item.user_message,
+                });
 
-      formattedMessages.push({
-        id: `ai-${item.id}`,
-        sender: "ai",
-        text: item.ai_reply,
-      });
-    });
+                formattedMessages.push({
+                  id: `ai-${item.id}`,
+                  sender: "ai",
+                  text: item.ai_reply,
+                });
+              });
 
-    setConversations((previousConversations) =>
-      previousConversations.map((chat) =>
-        chat.chat_id === chatId
-          ? {
-              ...chat,
-              messages: formattedMessages,
+              setConversations((previousConversations) =>
+                previousConversations.map((chat) =>
+                  chat.chat_id === chatId
+                    ? {
+                        ...chat,
+                        messages: formattedMessages,
+                      }
+                    : chat
+                )
+              );
+            } catch (error) {
+              console.error("Failed to load messages:", error);
             }
-          : chat
-      )
-    );
-  } catch (error) {
-    console.error("Failed to load messages:", error);
+          }}
+          onUpdateChat={(chatId, newTitle) => {
+            // Update the chat title in local state
+            setConversations((previousConversations) =>
+              previousConversations.map((chat) =>
+                chat.chat_id === chatId
+                  ? { ...chat, chat_title: newTitle }
+                  : chat
+              )
+            );
+          }}
+          onDeleteChat={(chatId) => {
+  const updatedConversations = conversations.filter(
+    (chat) => chat.chat_id !== chatId
+  );
+
+  setConversations(updatedConversations);
+
+  // If deleted chat was active
+  if (activeChatId === chatId) {
+    if (updatedConversations.length > 0) {
+  const nextChatId = updatedConversations[0].chat_id;
+
+  setActiveChatId(nextChatId);
+
+  // Fetch next chat messages
+  fetch(`/api/messages?chatId=${nextChatId}`)
+    .then((response) => response.json())
+    .then((data) => {
+      const formattedMessages = [];
+
+      (data?.data || []).forEach((item) => {
+        formattedMessages.push({
+          id: `user-${item.id}`,
+          sender: "user",
+          text: item.user_message,
+        });
+
+        formattedMessages.push({
+          id: `ai-${item.id}`,
+          sender: "ai",
+          text: item.ai_reply,
+        });
+      });
+
+      setConversations((previousConversations) =>
+        previousConversations.map((chat) =>
+          chat.chat_id === nextChatId
+            ? {
+                ...chat,
+                messages: formattedMessages,
+              }
+            : chat
+        )
+      );
+    });
+} else {
+  setActiveChatId(null);
+} 
   }
 }}
         />
@@ -265,7 +362,7 @@ useEffect(() => {
           <div className="border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
             <p className="text-sm font-medium text-blue-600">AI Assistant</p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
-              {activeChat.chat_title}
+              {activeChat?.chat_title || "New Chat"}
             </h1>
           </div>
 
